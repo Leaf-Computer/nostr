@@ -75,6 +75,10 @@ pub use self::util::JsonUtil;
 #[doc(hidden)]
 #[cfg(feature = "std")]
 pub use self::util::SECP256K1;
+#[doc(hidden)]
+pub use self::nips::nipxxa::{Task, TaskUserRole, TaskError};
+#[doc(hidden)]
+pub use self::nips::nip_xxe::Tracker;
 
 /// Result
 #[doc(hidden)]

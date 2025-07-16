@@ -60,3 +60,4 @@ pub mod nip96;
 pub mod nip98;
 pub mod nipc0;
 pub mod nipxxa;
+pub mod nip_xxe;
