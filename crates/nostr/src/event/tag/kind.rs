@@ -25,6 +25,8 @@ pub enum TagKind<'a> {
     Amount,
     /// Anonymous
     Anon,
+    /// Tracks if something is archived
+    Archived,
     /// Blurhash
     Blurhash,
     /// Bolt11 invoice
@@ -53,6 +55,8 @@ pub enum TagKind<'a> {
     Description,
     /// Size of the file in pixels
     Dim,
+    /// The timestamp something is due at
+    DueAt,
     /// Emoji
     Emoji,
     /// Encrypted
@@ -310,6 +314,7 @@ impl<'a> TagKind<'a> {
             Self::Alt => "alt",
             Self::Amount => "amount",
             Self::Anon => "anon",
+            Self::Archived => "archived",
             Self::Blurhash => "blurhash",
             Self::Bolt11 => "bolt11",
             Self::Challenge => "challenge",
@@ -321,6 +326,7 @@ impl<'a> TagKind<'a> {
             Self::Dependency => "dep",
             Self::Description => "description",
             Self::Dim => "dim",
+            Self::DueAt => "due_at",
             Self::Emoji => "emoji",
             Self::Encrypted => "encrypted",
             Self::Ends => "ends",
