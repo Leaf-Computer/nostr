@@ -78,7 +78,9 @@ pub use self::util::SECP256K1;
 #[doc(hidden)]
 pub use self::nips::nipxxa::{Task, TaskUserRole, TaskError};
 #[doc(hidden)]
-pub use self::nips::nip_xxe::Tracker;
+pub use self::nips::nipxxe::Tracker;
+#[doc(hidden)]
+pub use self::nips::nipxxc::*;
 
 /// Result
 #[doc(hidden)]

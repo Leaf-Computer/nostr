@@ -156,6 +156,7 @@ kind_variants! {
     UserStatus => 30315, "User Status", "<https://github.com/nostr-protocol/nips/blob/master/38.md>",
     Tracker => 35000, "Tracker", "<https://github.com/nostr-protocol/nips/blob/master/XXE.md>",
     Task => 35001, "Task", "<https://github.com/nostr-protocol/nips/blob/master/XXA.md>",
+    KanbanBoard => 35002, "Kanban board", "<https://github.com/nostr-protocol/nips/blob/master/XXC.md>",
     CashuWallet => 17375, "Cashu Wallet", "<https://github.com/nostr-protocol/nips/blob/master/60.md>",
     CashuWalletUnspentProof => 7375, "Cashu Wallet Unspent Proof", "<https://github.com/nostr-protocol/nips/blob/master/60.md>",
     CashuWalletSpendingHistory => 7376, "Cashu Wallet Spending History", "<https://github.com/nostr-protocol/nips/blob/master/60.md>",

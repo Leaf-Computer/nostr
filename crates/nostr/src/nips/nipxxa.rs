@@ -18,20 +18,29 @@ use core::str::FromStr;
 use crate::event::builder::{Error, EventBuilder};
 use crate::nips::nip01;
 use crate::types::url::Url;
-use crate::{Alphabet, Event};
+use crate::{Alphabet, Event, Tags};
 use crate::{Kind, PublicKey, Tag, TagKind, Timestamp};
 
 /// Task
 ///
-/// A representation of a task/to-do item/reminder.
+/// A representation of a task/to-do item/reminder. (`kind:35001` event)
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Task {
     /// Unique identifier for the task
     pub id: String,
-    /// Task title (optional)
-    pub title: Option<String>,
     /// Task description (in Markdown format)
     pub description: String,
+    /// Task metadata from the tags
+    pub metadata: TaskMetadata,
+}
+
+/// TaskMetadata
+///
+/// A representation of the tags metadata around a task or task-like object
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TaskMetadata {
+    /// Task title (optional)
+    pub title: Option<String>,
     /// URL pointing to an image to be shown along with the title (optional)
     pub image: Option<Url>,
     /// Timestamp when the task was first created (optional)
@@ -97,13 +106,11 @@ impl From<Option<String>> for TaskUserRole {
     }
 }
 
-impl Task {
-    /// Create a new Task with a unique identifier and description
-    pub fn new(id: String, description: String) -> Self {
+impl TaskMetadata {
+    /// Create a new empty object
+    pub fn new() -> Self {
         Self {
-            id,
             title: None,
-            description,
             image: None,
             published_at: None,
             due_at: None,
@@ -160,16 +167,11 @@ impl Task {
         self.users.push((pubkey, role));
         self
     }
-
-    pub(crate) fn to_event_builder(self) -> Result<EventBuilder, Error> {
-        if self.id.is_empty() {
-            return Err(Error::NIP01(nip01::Error::InvalidCoordinate));
-        }
-
+}
+    
+impl Into<Tags> for TaskMetadata {
+    fn into(self) -> Tags {
         let mut tags: Vec<Tag> = Vec::with_capacity(1 + self.users.len() + self.tags.len() + 5);
-
-        // Add task ID
-        tags.push(Tag::identifier(self.id));
 
         // Add title
         if let Some(title) = self.title {
@@ -229,6 +231,83 @@ impl Task {
                 tags.push(Tag::custom(TagKind::single_letter(Alphabet::P, false), values));
             }
         }
+        
+        Tags::from_list(tags)
+    }
+}
+
+impl Task {
+    /// Create a new Task with a unique identifier and description
+    pub fn new(id: String, description: String) -> Self {
+        Self {
+            id,
+            description,
+            metadata: TaskMetadata {
+                title: None,
+                image: None,
+                published_at: None,
+                due_at: None,
+                archived: None,
+                tags: Vec::new(),
+                users: Vec::new(),
+            }
+        }
+    }
+
+    /// Set task title
+    pub fn title(mut self, title: String) -> Self {
+        self.metadata.title = Some(title);
+        self
+    }
+
+    /// Set task image URL
+    pub fn image(mut self, image: Url) -> Self {
+        self.metadata.image = Some(image);
+        self
+    }
+
+    /// Set task published timestamp
+    pub fn published_at(mut self, timestamp: Timestamp) -> Self {
+        self.metadata.published_at = Some(timestamp);
+        self
+    }
+
+    /// Set task due timestamp
+    pub fn due_at(mut self, timestamp: Timestamp) -> Self {
+        self.metadata.due_at = Some(timestamp);
+        self
+    }
+
+    /// Mark task as archived
+    pub fn archived(mut self, archived: bool) -> Self {
+        self.metadata.archived = Some(archived);
+        self
+    }
+
+    /// Add a tag for categorizing the task
+    pub fn add_tag(mut self, tag: String) -> Self {
+        self.metadata.tags.push(tag);
+        self
+    }
+
+    /// Add multiple tags for categorizing the task
+    pub fn add_tags(mut self, tags: Vec<String>) -> Self {
+        self.metadata.tags.extend(tags);
+        self
+    }
+
+    /// Add a user reference with a role
+    pub fn add_user(mut self, pubkey: PublicKey, role: TaskUserRole) -> Self {
+        self.metadata.users.push((pubkey, role));
+        self
+    }
+
+    pub(crate) fn to_event_builder(self) -> Result<EventBuilder, Error> {
+        if self.id.is_empty() {
+            return Err(Error::NIP01(nip01::Error::InvalidCoordinate));
+        }
+
+        let tags: Tags = self.metadata.into();
 
         // Build
         Ok(EventBuilder::new(Kind::Task, self.description).tags(tags))
@@ -262,6 +341,71 @@ impl fmt::Display for TaskError {
     }
 }
 
+impl TryFrom<&Tags> for TaskMetadata {
+    type Error = TaskError;
+
+    fn try_from(value: &Tags) -> Result<Self, Self::Error> {
+        let mut task_metadata = TaskMetadata::new();
+        
+        for tag in value.iter() {
+            match tag.kind() {
+                TagKind::Title => {
+                    if let Some(title) = tag.content() {
+                        task_metadata = task_metadata.title(title.to_string());
+                    }
+                },
+                TagKind::Image => {
+                    if let Some(image_url) = tag.content() {
+                        match Url::parse(image_url) {
+                            Ok(url) => task_metadata = task_metadata.image(url),
+                            Err(_) => return Err(TaskError::InvalidUrl(image_url.to_string())),
+                        }
+                    }
+                },
+                TagKind::PublishedAt => {
+                    if let Some(timestamp_str) = tag.content() {
+                        match timestamp_str.parse::<u64>() {
+                            Ok(timestamp) => task_metadata = task_metadata.published_at(Timestamp::from_secs(timestamp)),
+                            Err(_) => return Err(TaskError::InvalidTimestamp(timestamp_str.to_string())),
+                        }
+                    }
+                },
+                TagKind::DueAt => {
+                    if let Some(timestamp_str) = tag.content() {
+                        match timestamp_str.parse::<u64>() {
+                            Ok(timestamp) => task_metadata = task_metadata.due_at(Timestamp::from_secs(timestamp)),
+                            Err(_) => return Err(TaskError::InvalidTimestamp(timestamp_str.to_string())),
+                        }
+                    }
+                },
+                TagKind::Archived => {
+                    task_metadata = task_metadata.archived(true);
+                },
+                _ => {
+                    if tag.kind() == TagKind::t() {
+                        if let Some(hashtag) = tag.content() {
+                            task_metadata = task_metadata.add_tag(hashtag.to_string());
+                        }
+                    }
+                    else if tag.kind() == TagKind::p() {
+                        if let Some(pubkey_str) = tag.content() {
+                            if let Ok(pubkey) = PublicKey::from_str(pubkey_str) {
+                                let role = match tag.clone().to_vec().get(2) {
+                                    Some(role_value) => Some(role_value.to_string()),
+                                    None => None,
+                                };
+                                task_metadata = task_metadata.add_user(pubkey, TaskUserRole::from(role));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        Ok(task_metadata)
+    }
+}
+
 impl TryFrom<&Event> for Task {
     type Error = TaskError;
 
@@ -287,61 +431,7 @@ impl TryFrom<&Event> for Task {
         // Start building the task
         let mut task = Task::new(id, event.content.clone());
 
-        // Extract title
-        for tag in event.tags.iter() {
-            match tag.kind() {
-                TagKind::Title => {
-                    if let Some(title) = tag.content() {
-                        task = task.title(title.to_string());
-                    }
-                },
-                TagKind::Image => {
-                    if let Some(image_url) = tag.content() {
-                        match Url::parse(image_url) {
-                            Ok(url) => task = task.image(url),
-                            Err(_) => return Err(TaskError::InvalidUrl(image_url.to_string())),
-                        }
-                    }
-                },
-                TagKind::PublishedAt => {
-                    if let Some(timestamp_str) = tag.content() {
-                        match timestamp_str.parse::<u64>() {
-                            Ok(timestamp) => task = task.published_at(Timestamp::from_secs(timestamp)),
-                            Err(_) => return Err(TaskError::InvalidTimestamp(timestamp_str.to_string())),
-                        }
-                    }
-                },
-                TagKind::DueAt => {
-                    if let Some(timestamp_str) = tag.content() {
-                        match timestamp_str.parse::<u64>() {
-                            Ok(timestamp) => task = task.due_at(Timestamp::from_secs(timestamp)),
-                            Err(_) => return Err(TaskError::InvalidTimestamp(timestamp_str.to_string())),
-                        }
-                    }
-                },
-                TagKind::Archived => {
-                    task = task.archived(true);
-                },
-                _ => {
-                    if tag.kind() == TagKind::t() {
-                        if let Some(hashtag) = tag.content() {
-                            task = task.add_tag(hashtag.to_string());
-                        }
-                    }
-                    else if tag.kind() == TagKind::p() {
-                        if let Some(pubkey_str) = tag.content() {
-                            if let Ok(pubkey) = PublicKey::from_str(pubkey_str) {
-                                let role = match tag.clone().to_vec().get(2) {
-                                    Some(role_value) => Some(role_value.to_string()),
-                                    None => None,
-                                };
-                                task = task.add_user(pubkey, TaskUserRole::from(role));
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        task.metadata = TaskMetadata::try_from(&event.tags)?;
 
         Ok(task)
     }
@@ -573,13 +663,13 @@ mod tests {
         // Check values
         assert_eq!(parsed_task.id, "333e500a-7d80-4e7b-beb1-ad1956a6150a");
         assert_eq!(parsed_task.description, "This is a test task");
-        assert_eq!(parsed_task.title, Some("Test Task".to_string()));
-        assert_eq!(parsed_task.published_at, Some(Timestamp::from_secs(1296962229)));
-        assert_eq!(parsed_task.due_at, Some(Timestamp::from_secs(1298962229)));
-        assert_eq!(parsed_task.tags, vec!["test".to_string()]);
-        assert_eq!(parsed_task.users.len(), 1);
-        assert_eq!(parsed_task.users[0].0.to_string(), "b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87");
-        assert_eq!(parsed_task.users[0].1, TaskUserRole::Assignee);
+        assert_eq!(parsed_task.metadata.title, Some("Test Task".to_string()));
+        assert_eq!(parsed_task.metadata.published_at, Some(Timestamp::from_secs(1296962229)));
+        assert_eq!(parsed_task.metadata.due_at, Some(Timestamp::from_secs(1298962229)));
+        assert_eq!(parsed_task.metadata.tags, vec!["test".to_string()]);
+        assert_eq!(parsed_task.metadata.users.len(), 1);
+        assert_eq!(parsed_task.metadata.users[0].0.to_string(), "b3e392b11f5d4f28321cedd09303a748acfd0487aea5a7450b3481c60b6e4f87");
+        assert_eq!(parsed_task.metadata.users[0].1, TaskUserRole::Assignee);
     }
 
     #[test]
